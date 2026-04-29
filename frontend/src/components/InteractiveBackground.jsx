@@ -1,6 +1,28 @@
 import { useEffect } from 'react';
-import { motion, useMotionValue, useSpring } from 'framer-motion';
+import { motion, useMotionValue, useSpring, useTransform } from 'framer-motion';
 import { useTheme } from '../context/ThemeContext';
+
+function ParallaxCircle({ radius, index, springX, springY, isDark }) {
+  // Inner circles move more, outer move less
+  const factor = 1 - index * 0.1;
+  const x = useTransform(springX, v => v * factor);
+  const y = useTransform(springY, v => v * factor);
+  
+  return (
+    <motion.circle
+      r={radius}
+      cx={0}
+      cy={0}
+      fill="none"
+      stroke={isDark ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.05)"}
+      strokeWidth={1.5 + index * 0.2}
+      strokeDasharray={`${3 + index} ${10 + index * 3}`}
+      animate={{ rotate: index % 2 === 0 ? 360 : -360 }}
+      transition={{ duration: 100 + index * 20, repeat: Infinity, ease: 'linear' }}
+      style={{ x, y, originX: '0px', originY: '0px' }}
+    />
+  );
+}
 
 export default function InteractiveBackground() {
   const { theme } = useTheme();
@@ -17,9 +39,8 @@ export default function InteractiveBackground() {
 
   useEffect(() => {
     const handleMouseMove = (e) => {
-      // Calculate coordinates relative to center, but scale them down for subtlety
-      mouseX.set((e.clientX - window.innerWidth / 2) * 0.15);
-      mouseY.set((e.clientY - window.innerHeight / 2) * 0.15);
+      mouseX.set((e.clientX - window.innerWidth / 2) * 0.25);
+      mouseY.set((e.clientY - window.innerHeight / 2) * 0.25);
     };
 
     window.addEventListener('mousemove', handleMouseMove);
@@ -108,20 +129,27 @@ export default function InteractiveBackground() {
         filter: 'blur(100px)',
       }} />
 
-      {/* Structural Grid Mesh */}
+      {/* Concentric Dotted Circles */}
       <div style={{
         position: 'absolute',
-        top: 0,
-        left: 0,
-        width: '100%',
-        height: '100%',
-        backgroundImage: isDark 
-          ? 'linear-gradient(rgba(255, 255, 255, 0.02) 1px, transparent 1px), linear-gradient(90deg, rgba(255, 255, 255, 0.02) 1px, transparent 1px)'
-          : 'linear-gradient(rgba(0, 0, 0, 0.03) 1px, transparent 1px), linear-gradient(90deg, rgba(0, 0, 0, 0.03) 1px, transparent 1px)',
-        backgroundSize: '40px 40px',
-        maskImage: 'radial-gradient(ellipse at center, black 40%, transparent 100%)',
-        WebkitMaskImage: 'radial-gradient(ellipse at center, black 40%, transparent 100%)',
-      }} />
+        top: '50%',
+        left: '50%',
+        width: 0,
+        height: 0,
+      }}>
+        <svg style={{ overflow: 'visible' }}>
+          {Array.from({ length: 12 }).map((_, i) => (
+            <ParallaxCircle 
+              key={i} 
+              index={i} 
+              radius={80 + i * 60} 
+              springX={springX} 
+              springY={springY} 
+              isDark={isDark} 
+            />
+          ))}
+        </svg>
+      </div>
     </div>
   );
 }

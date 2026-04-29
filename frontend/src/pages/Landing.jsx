@@ -179,7 +179,7 @@ export default function Landing() {
             letterSpacing: '0.3px',
           }}
         >
-          Enter EmoChat →
+          Enter Emotion-Aware ChatBot →
         </motion.button>
 
         {/* Click anywhere hint */}
@@ -218,7 +218,7 @@ export default function Landing() {
             fontSize: '18px', boxShadow: '0 4px 15px rgba(108,99,255,0.4)',
           }}>🧠</div>
           <span style={{ fontFamily: 'Syne, sans-serif', fontWeight: 800, fontSize: '18px', letterSpacing: '-0.5px' }}>
-            EmoChat AI
+            Emotion-Aware ChatBot
           </span>
         </div>
 
@@ -245,7 +245,7 @@ export default function Landing() {
           onMouseEnter={e => e.currentTarget.style.borderColor = 'var(--accent)'}
           onMouseLeave={e => e.currentTarget.style.borderColor = 'var(--border)'}
           >
-            Continue as Guest
+            Continue as Guest 
           </button>
 
           <button onClick={() => navigate('/auth?mode=login')} style={{
@@ -270,7 +270,7 @@ export default function Landing() {
             boxShadow: '0 4px 15px rgba(108,99,255,0.35)',
             transition: 'all 0.2s',
           }}>
-            Sign Up Free
+            Sign Up
           </button>
         </div>
       </nav>
