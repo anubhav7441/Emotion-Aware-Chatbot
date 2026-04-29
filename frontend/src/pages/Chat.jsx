@@ -24,7 +24,7 @@ const EMOTION_WELCOME = {
 };
 
 export default function Chat() {
-  const { theme, toggle }        = useTheme();
+  const { theme, toggleTheme }   = useTheme();
   const [messages, setMessages]  = useState([
     {
       role: 'assistant',
@@ -344,7 +344,7 @@ export default function Chat() {
               display: 'flex', flexDirection: 'column', gap: '8px',
             }}>
               {/* Theme toggle */}
-              <button onClick={toggle} style={{
+              <button onClick={toggleTheme} style={{
                 width: '100%', background: 'transparent',
                 border: `1px solid ${styles.border}`,
                 borderRadius: '12px', padding: '11px 16px',

@@ -15,7 +15,7 @@ export default function Auth() {
   const [error, setError]     = useState('');
   const [success, setSuccess] = useState('');
   const [loading, setLoading] = useState(false);
-  const { theme, toggle }     = useTheme();
+  const { theme, toggleTheme }     = useTheme();
   const navigate              = useNavigate();
 
   const handleSubmit = async (e) => {
@@ -95,7 +95,7 @@ export default function Auth() {
         }}>← Back</button>
       </div>
       <div style={{ position: 'fixed', top: '20px', right: '24px', zIndex: 10 }}>
-        <button onClick={toggle} style={{
+        <button onClick={toggleTheme} style={{
           width: '40px', height: '40px', borderRadius: '10px',
           background: 'var(--surface)', border: '1px solid var(--border)',
           cursor: 'pointer', fontSize: '18px', color: 'var(--text)',

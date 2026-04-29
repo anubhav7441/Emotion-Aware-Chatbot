@@ -7,7 +7,7 @@ import InteractiveBackground from '../components/InteractiveBackground';
 
 export default function Landing() {
   const [showIntro, setShowIntro] = useState(true);
-  const { theme, toggle } = useTheme();
+  const { theme, toggleTheme } = useTheme();
   const navigate   = useNavigate();
   const [loading, setLoading] = useState(false);
 
@@ -225,7 +225,7 @@ export default function Landing() {
         {/* Nav right */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
           {/* Theme toggle */}
-          <button onClick={toggle} style={{
+          <button onClick={toggleTheme} style={{
             width: '40px', height: '40px', borderRadius: '10px',
             background: 'var(--surface)', border: '1px solid var(--border)',
             cursor: 'pointer', fontSize: '18px', color: 'var(--text)',

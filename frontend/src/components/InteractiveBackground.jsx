@@ -2,11 +2,33 @@ import { useEffect } from 'react';
 import { motion, useMotionValue, useSpring, useTransform } from 'framer-motion';
 import { useTheme } from '../context/ThemeContext';
 
+const LIGHT_COLORS = [
+  'rgba(79, 70, 229, 0.4)',  // Indigo
+  'rgba(139, 92, 246, 0.4)', // Purple
+  'rgba(6, 182, 212, 0.4)',  // Cyan
+  'rgba(236, 72, 153, 0.4)', // Pink
+  'rgba(16, 185, 129, 0.4)', // Emerald
+  'rgba(245, 158, 11, 0.4)', // Amber
+];
+
+const DARK_COLORS = [
+  'rgba(79, 70, 229, 0.25)',  
+  'rgba(139, 92, 246, 0.25)', 
+  'rgba(6, 182, 212, 0.25)',  
+  'rgba(236, 72, 153, 0.25)', 
+  'rgba(16, 185, 129, 0.25)', 
+  'rgba(245, 158, 11, 0.25)', 
+];
+
 function ParallaxCircle({ radius, index, springX, springY, isDark }) {
   // Inner circles move more, outer move less
   const factor = 1 - index * 0.1;
   const x = useTransform(springX, v => v * factor);
   const y = useTransform(springY, v => v * factor);
+  
+  const color = isDark 
+    ? DARK_COLORS[index % DARK_COLORS.length] 
+    : LIGHT_COLORS[index % LIGHT_COLORS.length];
   
   return (
     <motion.circle
@@ -14,7 +36,7 @@ function ParallaxCircle({ radius, index, springX, springY, isDark }) {
       cx={0}
       cy={0}
       fill="none"
-      stroke={isDark ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.05)"}
+      stroke={color}
       strokeWidth={1.5 + index * 0.2}
       strokeDasharray={`${3 + index} ${10 + index * 3}`}
       animate={{ rotate: index % 2 === 0 ? 360 : -360 }}
