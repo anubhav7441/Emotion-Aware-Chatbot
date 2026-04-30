@@ -7,21 +7,7 @@ import { useVoiceRecorder } from '../hooks/useVoiceRecorder';
 import EmotionBadge from '../components/EmotionBadge';
 import InteractiveBackground from '../components/InteractiveBackground';
 
-const EMOTION_COLORS = {
-  happy:   { bg: 'rgba(234,179,8,0.12)',   border: 'rgba(234,179,8,0.3)',   glow: 'rgba(234,179,8,0.15)'   },
-  sad:     { bg: 'rgba(59,130,246,0.12)',  border: 'rgba(59,130,246,0.3)',  glow: 'rgba(59,130,246,0.15)'  },
-  angry:   { bg: 'rgba(239,68,68,0.12)',   border: 'rgba(239,68,68,0.3)',   glow: 'rgba(239,68,68,0.15)'   },
-  fear:    { bg: 'rgba(168,85,247,0.12)',  border: 'rgba(168,85,247,0.3)',  glow: 'rgba(168,85,247,0.15)'  },
-  neutral: { bg: 'rgba(99,102,241,0.10)',  border: 'rgba(99,102,241,0.25)', glow: 'rgba(99,102,241,0.12)'  },
-};
 
-const EMOTION_WELCOME = {
-  happy:   'You seem happy today! Let\'s keep that energy going 🌟',
-  sad:     'I\'m here for you. Tell me what\'s on your mind 💙',
-  angry:   'I hear you. Let\'s work through this together 🤝',
-  fear:    'You\'re safe here. Take your time 🕊️',
-  neutral: 'I analyze sentiment to detect emotions and respond empathetically.',
-};
 
 export default function Chat() {
   const { theme, toggleTheme }   = useTheme();
@@ -73,7 +59,6 @@ export default function Chat() {
   }, [audioBlob]);
 
   const historyForAPI = messages.map(m => ({ role: m.role, content: m.content }));
-  const ec = EMOTION_COLORS[currentEmotion] || EMOTION_COLORS.neutral;
 
   const isDark = theme === 'dark';
   const styles = {
@@ -473,72 +458,7 @@ export default function Chat() {
           padding: '20px 16px', display: 'flex', flexDirection: 'column',
         }}>
 
-          {/* Empty state */}
-          {messages.length === 0 && (
-            <motion.div
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
-              transition={{ delay: 0.2, type: 'spring' }}
-              style={{
-                display: 'flex', flexDirection: 'column',
-                alignItems: 'center', justifyContent: 'center',
-                flex: 1, gap: '20px', textAlign: 'center',
-              }}
-            >
-              <motion.div
-                animate={{ y: [0, -12, 0] }}
-                transition={{ duration: 4, repeat: Infinity, ease: 'easeInOut' }}
-                style={{
-                  width: '88px', height: '88px',
-                  background: 'linear-gradient(135deg, rgba(99,102,241,0.2), rgba(139,92,246,0.2))',
-                  border: '1px solid rgba(99,102,241,0.3)',
-                  borderRadius: '28px', display: 'flex',
-                  alignItems: 'center', justifyContent: 'center',
-                  fontSize: '40px',
-                  boxShadow: '0 20px 40px -10px rgba(99,102,241,0.25)',
-                }}
-              >🧠</motion.div>
-              <div>
-                <p style={{
-                  fontSize: '20px', fontWeight: 700,
-                  color: styles.text, marginBottom: '10px',
-                  fontFamily: 'Syne, sans-serif', letterSpacing: '-0.5px',
-                }}>
-                  How are you feeling today?
-                </p>
-                <p style={{
-                  fontSize: '14px', color: styles.muted,
-                  maxWidth: '360px', lineHeight: 1.7,
-                }}>
-                  {EMOTION_WELCOME[currentEmotion]}
-                </p>
-              </div>
 
-              {/* Emotion chips */}
-              <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', justifyContent: 'center' }}>
-                {[
-                  { e: '😊', l: 'Happy' }, { e: '😢', l: 'Sad' },
-                  { e: '😠', l: 'Angry' }, { e: '😨', l: 'Fear' },
-                  { e: '😐', l: 'Neutral' },
-                ].map((em, i) => (
-                  <motion.div
-                    key={em.l}
-                    animate={{ y: [0, -6, 0] }}
-                    transition={{ duration: 3, delay: i * 0.3, repeat: Infinity }}
-                    style={{
-                      background: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.04)',
-                      border: `1px solid ${styles.border}`,
-                      borderRadius: '99px', padding: '6px 14px',
-                      fontSize: '13px', color: styles.muted,
-                      display: 'flex', gap: '6px',
-                    }}
-                  >
-                    <span>{em.e}</span><span>{em.l}</span>
-                  </motion.div>
-                ))}
-              </div>
-            </motion.div>
-          )}
 
           {/* Message bubbles */}
           <div style={{

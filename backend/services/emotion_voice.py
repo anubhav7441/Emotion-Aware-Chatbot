@@ -9,13 +9,6 @@ def detect_voice_emotion(audio_path: str) -> dict:
         pitches, mags = librosa.piptrack(y=y, sr=sr)
         pitch   = float(np.mean(pitches[pitches > 0])) if pitches[pitches > 0].size else 0
 
-        if energy > 0.1 and pitch > 300:
-            return {"emotion": "angry",   "confidence": 0.6}
-        elif energy < 0.02:
-            return {"emotion": "sad",     "confidence": 0.55}
-        elif pitch > 250 and energy > 0.06:
-            return {"emotion": "happy",   "confidence": 0.58}
-        else:
-            return {"emotion": "neutral", "confidence": 0.65}
+        return {"energy": energy, "pitch": pitch}
     except Exception:
-        return {"emotion": "neutral", "confidence": 0.5}
+        return {"energy": 0.0, "pitch": 0.0}

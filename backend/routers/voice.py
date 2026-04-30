@@ -43,14 +43,14 @@ async def process_voice(
         print(f"Speech recognition error: {e}")
         transcript = ""
 
-    text_emotion  = detect_text_emotion(transcript) if transcript else {"emotion": "neutral", "confidence": 0.5}
-    voice_emotion = detect_voice_emotion(str(filepath))
-
-    final_emotion = (
-        voice_emotion["emotion"]
-        if voice_emotion["confidence"] > text_emotion["confidence"]
-        else text_emotion["emotion"]
+    voice_acoustics = detect_voice_emotion(str(filepath))
+    
+    emotion_result = detect_text_emotion(
+        transcript if transcript else "",
+        voice_energy=voice_acoustics.get("energy"),
+        voice_pitch=voice_acoustics.get("pitch")
     )
+    final_emotion = emotion_result["emotion"]
 
     reply     = await generate_response(
         user_message=transcript or "(inaudible audio)",
@@ -69,8 +69,8 @@ async def process_voice(
     return {
         "transcript":    transcript,
         "reply":         reply,
-        "text_emotion":  text_emotion["emotion"],
-        "voice_emotion": voice_emotion["emotion"],
+        "text_emotion":  final_emotion,
+        "voice_emotion": final_emotion,
         "final_emotion": final_emotion,
         "audio_url":     audio_url
     }

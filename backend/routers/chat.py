@@ -1,51 +1,71 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
-from database.db import get_db          # ← NO dots
-from database.models import Message     # ← NO dots
-from models.schemas import ChatRequest, ChatResponse   # ← NO dots
-from services.emotion_text import detect_text_emotion  # ← NO dots
-from services.chatbot import generate_response         # ← NO dots
-from services.tts import text_to_speech                # ← NO dots
+from database.db import get_db
+from database.models import Message
+from models.schemas import ChatRequest, ChatResponse
+from services.emotion_text import detect_text_emotion
+from services.chatbot import generate_response
+from services.tts import text_to_speech
 
 router = APIRouter(prefix="/api", tags=["chat"])
 
+
+
 @router.post("/chat", response_model=ChatResponse)
 async def chat(request: ChatRequest, db: AsyncSession = Depends(get_db)):
-    emotion_result = detect_text_emotion(request.message)
-    emotion        = emotion_result["emotion"]
-    confidence     = emotion_result["confidence"]
 
+    # Step 1 — detect emotion from text (free-form, any language)
+    emotion_result = detect_text_emotion(request.message)
+    text_emotion   = emotion_result["emotion"]
+    tone_hint      = emotion_result.get("tone_hint", "helpful and clear")
+    language       = emotion_result.get("language", "English")
+
+
+
+    # Step 3 — decide final emotion
+    # If face detected with good confidence → trust face more
+    if request.face_emotion and request.face_confidence and request.face_confidence > 0.55:
+        final_emotion = request.face_emotion
+    else:
+        final_emotion = text_emotion
+
+    # Step 4 — generate response
     try:
         reply = await generate_response(
             user_message=request.message,
-            emotion=emotion,
-            conversation_history=request.conversation_history
+            emotion=final_emotion,
+            conversation_history=request.conversation_history,
+            tone_hint=tone_hint,
+            language=language,
+            face_emotion=request.face_emotion,
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"LLM error: {str(e)}")
 
-    audio_url = text_to_speech(reply, emotion)
+    # Step 5 — text to speech
+    audio_url = text_to_speech(reply, final_emotion)
 
+    # Step 6 — save to DB
     if request.user_id:
-        user_msg = Message(
+        db.add(Message(
             user_id=request.user_id, role="user",
-            content=request.message, emotion=emotion,
-            emotion_conf=confidence, input_type="text"
-        )
-        bot_msg = Message(
+            content=request.message, emotion=final_emotion,
+            emotion_conf=emotion_result["confidence"],
+            input_type="text"
+        ))
+        db.add(Message(
             user_id=request.user_id, role="assistant",
-            content=reply, emotion=emotion,
-            emotion_conf=confidence, input_type="text"
-        )
-        db.add(user_msg)
-        db.add(bot_msg)
+            content=reply, emotion=final_emotion,
+            emotion_conf=emotion_result["confidence"],
+            input_type="text"
+        ))
         await db.commit()
 
     return ChatResponse(
         reply=reply,
-        emotion=emotion,
-        confidence=confidence,
+        emotion=final_emotion,
+        confidence=emotion_result["confidence"],
         audio_url=audio_url
     )
 
@@ -60,8 +80,10 @@ async def get_history(user_id: int, db: AsyncSession = Depends(get_db)):
     messages = result.scalars().all()
     return [
         {
-            "role": m.role, "content": m.content,
-            "emotion": m.emotion, "timestamp": str(m.timestamp)
+            "role":      m.role,
+            "content":   m.content,
+            "emotion":   m.emotion,
+            "timestamp": str(m.timestamp),
         }
         for m in messages
     ]
@@ -75,7 +97,10 @@ async def get_analytics(user_id: int, db: AsyncSession = Depends(get_db)):
         )
     )
     messages = result.scalars().all()
-    emotion_counts = {}
+    counts = {}
     for msg in messages:
-        emotion_counts[msg.emotion] = emotion_counts.get(msg.emotion, 0) + 1
-    return {"emotion_distribution": emotion_counts, "total_messages": len(messages)}
+        counts[msg.emotion] = counts.get(msg.emotion, 0) + 1
+    return {
+        "emotion_distribution": counts,
+        "total_messages": len(messages)
+    }
