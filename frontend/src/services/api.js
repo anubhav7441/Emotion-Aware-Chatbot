@@ -16,7 +16,7 @@ export const sendMessage = (message, history, userId, faceEmotion, faceConf) =>
     face_emotion:     faceEmotion  || null,
     face_confidence:  faceConf     || null,
   });
-  
+
 export const sendVoice = (audioBlob, userId) => {
   const form = new FormData();
   form.append('audio', audioBlob, 'recording.wav');
