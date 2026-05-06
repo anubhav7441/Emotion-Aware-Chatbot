@@ -38,6 +38,7 @@ async def generate_response(
     tone_hint: str = "helpful and clear",
     language: str = "English",
     face_emotion: str = None,
+    mismatch: bool = False,
 ) -> str:
     """
     Generate a response adapting to ANY emotion, ANY language, ANY topic.

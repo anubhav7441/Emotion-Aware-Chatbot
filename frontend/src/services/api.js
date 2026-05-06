@@ -8,9 +8,15 @@ API.interceptors.request.use((config) => {
   return config;
 });
 
-export const sendMessage  = (message, history, userId) =>
-  API.post('/api/chat', { message, conversation_history: history, user_id: userId });
-
+export const sendMessage = (message, history, userId, faceEmotion, faceConf) =>
+  API.post('/api/chat', {
+    message,
+    conversation_history: history,
+    user_id:          userId,
+    face_emotion:     faceEmotion  || null,
+    face_confidence:  faceConf     || null,
+  });
+  
 export const sendVoice = (audioBlob, userId) => {
   const form = new FormData();
   form.append('audio', audioBlob, 'recording.wav');

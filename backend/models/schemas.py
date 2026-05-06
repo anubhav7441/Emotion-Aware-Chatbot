@@ -6,7 +6,8 @@ class ChatRequest(BaseModel):
     message: str
     user_id: Optional[int] = None
     conversation_history: Optional[List[dict]] = []
-
+    face_emotion: Optional[str] = None  
+    face_confidence: Optional[float] = None 
 class ChatResponse(BaseModel):
     reply: str
     emotion: str
@@ -17,6 +18,7 @@ class UserCreate(BaseModel):
     username: str
     email: str
     password: str
+    
 class VerifyEmail(BaseModel) :
     user_id: str
     token_type: str
