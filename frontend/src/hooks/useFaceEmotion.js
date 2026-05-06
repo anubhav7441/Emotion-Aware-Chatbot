@@ -29,14 +29,27 @@ export function useFaceEmotion() {
   useEffect(() => {
     const load = async () => {
       try {
+        // Load models one by one so we can see which one fails
         await faceapi.nets.tinyFaceDetector.loadFromUri('/models');
         await faceapi.nets.faceExpressionNet.loadFromUri('/models');
         await faceapi.nets.faceLandmark68TinyNet.loadFromUri('/models');
         setIsLoaded(true);
-        console.log('Face-api models loaded');
+        console.log('✅ Face-api models loaded successfully');
       } catch (e) {
-        console.error('Model load error:', e);
-        setError('Could not load face detection models');
+        console.error('❌ Face model load error:', e);
+        // Retry once after 2 seconds (helps with slow network / cold start)
+        setTimeout(async () => {
+          try {
+            await faceapi.nets.tinyFaceDetector.loadFromUri('/models');
+            await faceapi.nets.faceExpressionNet.loadFromUri('/models');
+            await faceapi.nets.faceLandmark68TinyNet.loadFromUri('/models');
+            setIsLoaded(true);
+            console.log('✅ Face-api models loaded (retry)');
+          } catch (e2) {
+            console.error('❌ Face model retry failed:', e2);
+            setError('Face models unavailable — chat still works!');
+          }
+        }, 2000);
       }
     };
     load();
