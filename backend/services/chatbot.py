@@ -6,7 +6,11 @@ from google.genai import types
 
 load_dotenv()
 _client = google_genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
-_MODEL  = "gemini-2.5-flash"
+_MODEL_CHAIN = [
+    "gemini-2.5-flash",        # primary
+    "gemini-2.5-flash",        # retry same model (temp spikes usually clear)
+    "gemini-flash-latest",     # fallback
+]
 
 
 SYSTEM_BASE = """You are EmoChat AI — an advanced emotionally intelligent AI assistant.
@@ -211,19 +215,38 @@ async def generate_response(
         conversation_history, user_message
     )
 
-    def _call():
-        resp = _client.models.generate_content(
-            model=_MODEL,
-            contents=full_prompt,
-            config=types.GenerateContentConfig(
-                max_output_tokens=700,
-                temperature=0.90,   # slightly creative for warmth
-            )
-        )
-        return resp.text
+    def _call_with_retry():
+        import time
+        last_err = None
+        for attempt, model in enumerate(_MODEL_CHAIN):
+            try:
+                resp = _client.models.generate_content(
+                    model=model,
+                    contents=full_prompt,
+                    config=types.GenerateContentConfig(
+                        max_output_tokens=700,
+                        temperature=0.90,
+                    )
+                )
+                return resp.text
+            except Exception as e:
+                last_err = e
+                err_str = str(e)
+                # Retry on transient errors (503, 429 rate limit)
+                if '503' in err_str or 'UNAVAILABLE' in err_str:
+                    wait = 2 ** attempt  # 1s, 2s, 4s
+                    print(f"[chatbot] {model} unavailable, retrying in {wait}s...")
+                    time.sleep(wait)
+                    continue
+                elif '429' in err_str and attempt < len(_MODEL_CHAIN) - 1:
+                    print(f"[chatbot] {model} quota hit, trying next model...")
+                    continue
+                else:
+                    raise
+        raise last_err
 
     try:
-        return await asyncio.to_thread(_call)
+        return await asyncio.to_thread(_call_with_retry)
     except Exception as e:
         print(f"[chatbot] Gemini error: {e}")
         lang = language.lower()

@@ -8,7 +8,7 @@ load_dotenv()
 # Use new google-genai SDK
 from google import genai as google_genai
 _client = google_genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
-_MODEL  = "gemini-2.5-flash"   # free tier available
+_MODEL_CHAIN = ["gemini-2.5-flash", "gemini-2.5-flash", "gemini-flash-latest"]
 
 
 def detect_text_emotion(text: str, voice_energy: float = None, voice_pitch: float = None) -> dict:
@@ -53,23 +53,38 @@ Rules:
 
 Text: {text[:400]}"""
 
-    try:
-        resp = _client.models.generate_content(model=_MODEL, contents=prompt)
-        raw  = resp.text.strip().replace("```json", "").replace("```", "").strip()
-        data = json.loads(raw)
-        return {
-            "emotion":    str(data.get("emotion",    "neutral")).lower().strip(),
-            "display":    str(data.get("display",    "Neutral")),
-            "confidence": float(data.get("confidence", 0.75)),
-            "language":   str(data.get("language",   "English")),
-            "tone_hint":  str(data.get("tone_hint",  "helpful and clear")),
-        }
-    except Exception as e:
-        print(f"[emotion_text] error: {e}")
-        return {
-            "emotion":    "neutral",
-            "display":    "Neutral",
-            "confidence": 0.5,
-            "language":   "English",
-            "tone_hint":  "helpful and clear",
-        }
+    import time
+    resp = None
+    for attempt, model in enumerate(_MODEL_CHAIN):
+        try:
+            resp = _client.models.generate_content(model=model, contents=prompt)
+            raw  = resp.text.strip().replace("```json", "").replace("```", "").strip()
+            data = json.loads(raw)
+            return {
+                "emotion":    str(data.get("emotion",    "neutral")).lower().strip(),
+                "display":    str(data.get("display",    "Neutral")),
+                "confidence": float(data.get("confidence", 0.75)),
+                "language":   str(data.get("language",   "English")),
+                "tone_hint":  str(data.get("tone_hint",  "helpful and clear")),
+            }
+        except json.JSONDecodeError:
+            # Model responded but not valid JSON — extract first word
+            raw_text = resp.text.lower() if resp else ""
+            for word in raw_text.split():
+                clean = word.strip('",{}(): ')
+                if len(clean) > 2 and clean.isalpha():
+                    return {"emotion": clean, "display": clean.capitalize(), "confidence": 0.65,
+                            "language": "English", "tone_hint": "empathetic and helpful"}
+            break
+        except Exception as e:
+            err_str = str(e)
+            if ('503' in err_str or 'UNAVAILABLE' in err_str) and attempt < len(_MODEL_CHAIN) - 1:
+                wait = 2 ** attempt
+                print(f"[emotion] {model} unavailable, retrying in {wait}s...")
+                time.sleep(wait)
+                continue
+            print(f"[emotion_text] error: {e}")
+            break
+
+    return {"emotion": "neutral", "display": "Neutral", "confidence": 0.5,
+            "language": "English", "tone_hint": "helpful and clear"}
