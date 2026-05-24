@@ -24,6 +24,9 @@ export function useFaceEmotion() {
   const [faceConf,    setFaceConf]    = useState(0);
   const [error,       setError]       = useState(null);
   const [expressions, setExpressions] = useState(null);
+  const [fps,         setFps]         = useState(0);
+  const fpsCountRef   = useRef(0);
+  const fpsTimerRef   = useRef(null);
 
   // Load models once
   useEffect(() => {
@@ -78,6 +81,7 @@ export function useFaceEmotion() {
 
   const stopCamera = useCallback(() => {
     clearInterval(intervalRef.current);
+    clearInterval(fpsTimerRef.current);
     if (streamRef.current) {
       streamRef.current.getTracks().forEach(t => t.stop());
       streamRef.current = null;
@@ -86,10 +90,18 @@ export function useFaceEmotion() {
     setIsActive(false);
     setFaceEmotion(null);
     setExpressions(null);
+    setFps(0);
   }, []);
 
   const startDetection = useCallback(() => {
     clearInterval(intervalRef.current);
+    // FPS counter
+    fpsCountRef.current = 0;
+    clearInterval(fpsTimerRef.current);
+    fpsTimerRef.current = setInterval(() => {
+      setFps(fpsCountRef.current);
+      fpsCountRef.current = 0;
+    }, 1000);
 
     intervalRef.current = setInterval(async () => {
       if (!videoRef.current || videoRef.current.readyState < 2) return;
@@ -102,6 +114,8 @@ export function useFaceEmotion() {
           )
           .withFaceLandmarks(true)
           .withFaceExpressions();
+
+        fpsCountRef.current += 1;
 
         if (!detection) {
           setFaceEmotion('neutral');
@@ -140,5 +154,6 @@ export function useFaceEmotion() {
     faceEmotion, faceConf,
     expressions, error,
     startCamera, stopCamera,
+    fps,
   };
 }

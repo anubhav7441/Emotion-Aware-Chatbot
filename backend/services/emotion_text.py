@@ -8,7 +8,7 @@ load_dotenv()
 # Use new google-genai SDK
 from google import genai as google_genai
 _client = google_genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
-_MODEL_CHAIN = ["gemini-2.5-flash", "gemini-2.5-flash", "gemini-flash-latest"]
+_MODEL_CHAIN = ["gemini-2.5-flash", "gemini-1.5-flash", "gemini-1.5-pro"]
 
 
 def detect_text_emotion(text: str, voice_energy: float = None, voice_pitch: float = None) -> dict:

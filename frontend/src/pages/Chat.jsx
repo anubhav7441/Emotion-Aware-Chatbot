@@ -69,6 +69,7 @@ export default function Chat() {
   const bottomRef = useRef(null);
   const navigate  = useNavigate();
   const userId    = parseInt(localStorage.getItem('userId')) || null;
+  const audioRef  = useRef(null); // single Audio instance to prevent overlap
 
   // ── Voice recorder ───────────────────────────────────────
   const {
@@ -128,8 +129,30 @@ export default function Chat() {
 
   const playAudio = (url) => {
     if (!audioEnabled || !url) return;
-    new Audio(url).play().catch(console.error);
+    if (audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current.currentTime = 0;
+    }
+    audioRef.current = new Audio(url);
+    audioRef.current.play().catch(console.error);
   };
+
+  // Emotional typing indicator text
+  const EMOTION_THINKING = {
+    happy:      '✨ Feeling your energy...',
+    joyful:     '😊 Matching your joy...',
+    excited:    '🤩 Catching your excitement...',
+    sad:        '💙 Listening carefully...',
+    melancholic:'🌧️ Here with you...',
+    angry:      '🤝 Hearing you out...',
+    frustrated: '💪 Processing your feelings...',
+    anxious:    '🌿 Taking a calm breath...',
+    fear:       '🕊️ You\'re safe here...',
+    lonely:     '💜 You\'re not alone...',
+    curious:    '🔍 Thinking this through...',
+    neutral:    '🧠 Thinking...',
+  };
+  const thinkingText = EMOTION_THINKING[currentEmotion] || '🧠 Sensing your emotion...';
 
   // ── Send text message ────────────────────────────────────
   const handleTextSend = async () => {
@@ -197,7 +220,8 @@ export default function Chat() {
     }]);
 
     try {
-      const { data } = await sendVoice(blob, userId);
+      // Pass history so voice chat maintains conversation context
+      const { data } = await sendVoice(blob, userId, historyForAPI);
 
       const fusion = fuseEmotions(
         data.final_emotion,
@@ -217,7 +241,7 @@ export default function Chat() {
         const updated = [...prev];
         updated[updated.length - 1] = {
           role:      'user',
-          content:   data.transcript || '(inaudible)',
+          content:   data.transcript || '🎤 (could not understand — please speak clearly)',
           inputType: 'voice',
           emotion:   data.text_emotion,
         };
@@ -794,20 +818,26 @@ export default function Chat() {
                   background:  styles.msgAI,
                   border:      `1px solid ${styles.msgAIBorder}`,
                   borderRadius: '16px', borderBottomLeftRadius: '3px',
-                  padding: '14px 18px',
-                  display: 'flex', gap: '5px',
+                  padding: '12px 16px',
+                  display: 'flex', alignItems: 'center', gap: '10px',
                 }}>
-                  {[0, 1, 2].map(idx => (
-                    <motion.div
-                      key={idx}
-                      animate={{ y: [0, -6, 0], opacity: [0.3, 1, 0.3] }}
-                      transition={{ duration: 0.8, repeat: Infinity, delay: idx * 0.15 }}
-                      style={{
-                        width: '6px', height: '6px', borderRadius: '50%',
-                        background: '#8b5cf6',
-                      }}
-                    />
-                  ))}
+                  <div style={{ display: 'flex', gap: '5px' }}>
+                    {[0, 1, 2].map(idx => (
+                      <motion.div
+                        key={idx}
+                        animate={{ y: [0, -6, 0], opacity: [0.3, 1, 0.3] }}
+                        transition={{ duration: 0.8, repeat: Infinity, delay: idx * 0.15 }}
+                        style={{
+                          width: '6px', height: '6px', borderRadius: '50%',
+                          background: '#8b5cf6',
+                        }}
+                      />
+                    ))}
+                  </div>
+                  <span style={{
+                    fontSize: '12px', color: styles.muted,
+                    fontStyle: 'italic',
+                  }}>{thinkingText}</span>
                 </div>
               </motion.div>
             )}

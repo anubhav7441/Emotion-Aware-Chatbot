@@ -17,10 +17,11 @@ export const sendMessage = (message, history, userId, faceEmotion, faceConf) =>
     face_confidence:  faceConf     || null,
   });
 
-export const sendVoice = (audioBlob, userId) => {
+export const sendVoice = (audioBlob, userId, history = []) => {
   const form = new FormData();
-  form.append('audio', audioBlob, 'recording.wav');
+  form.append('audio', audioBlob, 'recording.webm');
   if (userId) form.append('user_id', String(userId));
+  form.append('conversation_history', JSON.stringify(history));
   return API.post('/api/voice', form);
 };
 
