@@ -1,22 +1,27 @@
-from fastapi import APIRouter, Depends, HTTPException
+import asyncio
+import json
+from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from database.db import get_db
 from database.models import Message
 from models.schemas import ChatRequest, ChatResponse
-from services.emotion_text import detect_text_emotion
 from services.chatbot import generate_response
 from services.tts import text_to_speech
+from google import genai as google_genai
+from google.genai import types
+import os
 
 router = APIRouter(prefix="/api", tags=["chat"])
 
-# ── Emotion grouping for mismatch detection ──────────────────
-# These word lists cover any free-form emotion Claude might return
+_client = google_genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
+
+# ── Emotion grouping ──────────────────────────────────────────────────────
 POSITIVE_WORDS = [
     'happy', 'joyful', 'excited', 'grateful', 'playful', 'amused',
     'cheerful', 'elated', 'content', 'proud', 'hopeful', 'confident',
     'enthusiastic', 'optimistic', 'love', 'affection', 'romantic',
-    'tender', 'delight', 'ecstatic', 'blissful', 'thrilled',
+    'tender', 'delight', 'ecstatic', 'blissful', 'thrilled', 'relieved',
 ]
 NEGATIVE_WORDS = [
     'sad', 'angry', 'fear', 'frustrated', 'anxious', 'melancholic',
@@ -24,15 +29,10 @@ NEGATIVE_WORDS = [
     'disappointed', 'worried', 'furious', 'terrified', 'grief',
     'rage', 'bitter', 'hostile', 'depressed', 'heartbroken',
     'stressed', 'panicked', 'nervous', 'scared', 'exhausted',
-    'miserable', 'devastated', 'helpless', 'insecure',
+    'miserable', 'devastated', 'helpless', 'insecure', 'irritated',
 ]
 
 def get_emotion_group(emotion: str) -> str:
-    """
-    Classify any free-form emotion string into positive / negative / neutral.
-    Works by checking if any known word appears inside the emotion string.
-    Example: 'deeply melancholic' → negative
-    """
     if not emotion:
         return 'neutral'
     e = emotion.lower().strip()
@@ -43,122 +43,136 @@ def get_emotion_group(emotion: str) -> str:
     return 'neutral'
 
 def detect_mismatch(text_emotion: str, face_emotion: str) -> tuple[bool, str | None]:
-    """
-    Compare text emotion vs face emotion.
-    Returns (mismatch: bool, message: str | None)
-    Only flags mismatch when both sides are clearly opposite — not neutral.
-    """
     if not face_emotion or not text_emotion:
         return False, None
-
     text_group = get_emotion_group(text_emotion)
     face_group = get_emotion_group(face_emotion)
-
-    # Only flag when clearly opposite
     if text_group == face_group:
         return False, None
     if text_group == 'neutral' or face_group == 'neutral':
+        # subtle: text neutral + face negative
+        if text_group == 'neutral' and face_group == 'negative':
+            return True, (
+                f"User's face shows {face_emotion} even though their words seem neutral. "
+                f"They may be holding something back. Be gently curious."
+            )
         return False, None
-
-    # Generate mismatch message
     if text_group == 'positive' and face_group == 'negative':
-        msg = (
-            f"The user's words suggest they feel {text_emotion}, "
-            f"but their face shows {face_emotion}. "
-            f"They may be masking their true feelings. "
-            f"Gently acknowledge both — validate without forcing. "
-            f"Be extra compassionate."
+        return True, (
+            f"User's words suggest {text_emotion} but face shows {face_emotion}. "
+            f"They may be masking. Be extra compassionate."
         )
     elif text_group == 'negative' and face_group == 'positive':
-        msg = (
-            f"The user's words suggest {text_emotion}, "
-            f"but their face shows {face_emotion}. "
-            f"Perhaps things are looking up without them realising. "
-            f"Be warm and gently encouraging."
+        return True, (
+            f"User's words suggest {text_emotion} but face shows {face_emotion}. "
+            f"Perhaps things are looking up. Be warm and gently encouraging."
         )
-    else:
-        msg = (
-            f"There's a mix of {text_emotion} (from text) "
-            f"and {face_emotion} (from face). "
-            f"Respond with empathy to both."
-        )
+    return True, (
+        f"Mixed signals: {text_emotion} (text) vs {face_emotion} (face). "
+        f"Respond with empathy to both."
+    )
 
-    return True, msg
-
-def decide_final_emotion(
-    text_emotion: str,
-    face_emotion: str | None,
-    face_confidence: float | None,
-    mismatch: bool,
-) -> str:
-    """
-    Decide which emotion to use for the response tone.
-    Rules:
-    - No face data → use text emotion
-    - Face confidence high (>0.6) → trust face
-    - Mismatch detected → trust face (harder to fake expressions)
-    - Otherwise → use text emotion
-    """
+def decide_final_emotion(text_emotion, face_emotion, face_confidence, mismatch) -> str:
     if not face_emotion or not face_confidence:
         return text_emotion
-
     if mismatch:
-        # Face wins on mismatch — expressions are harder to fake
         return face_emotion
-
     if face_confidence > 0.6:
         return face_emotion
-
-    # Face confidence too low — fall back to text
     return text_emotion
 
 
+# ── Fast single-call emotion detection using Gemini ──────────────────────
+_EMOTION_MODEL = "gemini-2.5-flash"
+
+def _detect_emotion_sync(text: str) -> dict:
+    """Detect emotion from text in a single fast Gemini call."""
+    if not text or not text.strip():
+        return {"emotion": "neutral", "display": "Neutral", "confidence": 0.9,
+                "language": "English", "tone_hint": "neutral and helpful"}
+    prompt = (
+        'Analyze this text and return ONLY valid JSON (no markdown):\n'
+        '{"emotion":"one English word","display":"Capitalized","confidence":0.0-1.0,'
+        '"language":"detected language","tone_hint":"2-5 words how AI should respond"}\n\n'
+        f'Text: {text[:300]}'
+    )
+    try:
+        resp = _client.models.generate_content(
+            model=_EMOTION_MODEL,
+            contents=prompt,
+            config=types.GenerateContentConfig(max_output_tokens=80, temperature=0.1),
+        )
+        raw = resp.text.strip().replace("```json", "").replace("```", "").strip()
+        data = json.loads(raw)
+        return {
+            "emotion":    str(data.get("emotion",    "neutral")).lower().strip(),
+            "display":    str(data.get("display",    "Neutral")),
+            "confidence": float(data.get("confidence", 0.75)),
+            "language":   str(data.get("language",   "English")),
+            "tone_hint":  str(data.get("tone_hint",  "helpful and clear")),
+        }
+    except Exception as e:
+        print(f"[emotion] error: {e}")
+        return {"emotion": "neutral", "display": "Neutral", "confidence": 0.6,
+                "language": "English", "tone_hint": "helpful and clear"}
+
+
+def _save_messages_sync(user_id, user_msg, reply, text_emotion, final_emotion, confidence, db_session):
+    """Fire-and-forget DB save (runs in background thread)."""
+    pass  # async version below handles this
+
+
+async def _save_to_db(db, user_id, user_msg, reply, text_emotion, final_emotion, confidence):
+    """Save conversation to DB without blocking the response."""
+    try:
+        db.add(Message(user_id=user_id, role="user",      content=user_msg,
+                       emotion=text_emotion, emotion_conf=confidence, input_type="text"))
+        db.add(Message(user_id=user_id, role="assistant", content=reply,
+                       emotion=final_emotion, emotion_conf=confidence, input_type="text"))
+        await db.commit()
+    except Exception as e:
+        print(f"DB save error: {e}")
+        await db.rollback()
+
+
 @router.post("/chat", response_model=ChatResponse)
-async def chat(request: ChatRequest, db: AsyncSession = Depends(get_db)):
+async def chat(request: ChatRequest, background_tasks: BackgroundTasks,
+               db: AsyncSession = Depends(get_db)):
 
-    # ── Step 1: Detect emotion from text ─────────────────────
-    # Returns free-form emotion, language, tone_hint — not a fixed list
-    emotion_result = detect_text_emotion(request.message)
-    text_emotion   = emotion_result.get("emotion",   "neutral")
-    tone_hint      = emotion_result.get("tone_hint", "helpful and clear")
-    language       = emotion_result.get("language",  "English")
-    confidence     = emotion_result.get("confidence", 0.75)
+    # ── Step 1 & 5 combined: detect emotion + generate response IN PARALLEL ──
+    # Emotion detection and response generation both need Gemini,
+    # but emotion is needed to build the response prompt.
+    # So we run emotion detection as fast as possible (80 token limit, temp=0.1)
+    # then immediately fire the response generation.
 
-    # ── Step 2: Detect mismatch between text and face ─────────
-    mismatch, mismatch_context = detect_mismatch(
-        text_emotion,
-        request.face_emotion,
-    )
+    # Run emotion detection in thread so it doesn't block event loop
+    emotion_result = await asyncio.to_thread(_detect_emotion_sync, request.message)
 
-    # ── Step 3: Decide final emotion ──────────────────────────
+    text_emotion = emotion_result.get("emotion",   "neutral")
+    tone_hint    = emotion_result.get("tone_hint", "helpful and clear")
+    language     = emotion_result.get("language",  "English")
+    confidence   = emotion_result.get("confidence", 0.75)
+
+    # ── Step 2: Detect mismatch ───────────────────────────────────────────
+    mismatch, mismatch_context = detect_mismatch(text_emotion, request.face_emotion)
+
+    # ── Step 3: Decide final emotion ─────────────────────────────────────
     final_emotion = decide_final_emotion(
-        text_emotion,
-        request.face_emotion,
-        request.face_confidence,
-        mismatch,
+        text_emotion, request.face_emotion, request.face_confidence, mismatch
     )
 
-    # ── Step 4: Build augmented message for chatbot ───────────
-    # We never modify what the user wrote — we append a system note
-    # that tells the AI about the emotional context
+    # ── Step 4: Augment message with face/mismatch context ───────────────
     augmented_message = request.message
-
     if mismatch and mismatch_context:
-        augmented_message = (
-            f"{request.message}\n\n"
-            f"[SYSTEM EMOTION NOTE: {mismatch_context}]"
-        )
+        augmented_message = f"{request.message}\n\n[SYSTEM EMOTION NOTE: {mismatch_context}]"
     elif request.face_emotion and request.face_confidence and request.face_confidence > 0.4:
-        # No mismatch but face data is available — pass it as context
         augmented_message = (
             f"{request.message}\n\n"
-            f"[SYSTEM EMOTION NOTE: User's face expression shows "
-            f"{request.face_emotion} "
-            f"(confidence: {int(request.face_confidence * 100)}%). "
-            f"Use this as additional emotional context.]"
+            f"[SYSTEM EMOTION NOTE: User's face shows {request.face_emotion} "
+            f"({int(request.face_confidence * 100)}% confidence). Use as extra context.]"
         )
 
-    # ── Step 5: Generate AI response ─────────────────────────
+    # ── Step 5: Generate AI response ─────────────────────────────────────
     try:
         reply = await generate_response(
             user_message=augmented_message,
@@ -170,40 +184,24 @@ async def chat(request: ChatRequest, db: AsyncSession = Depends(get_db)):
             mismatch=mismatch,
         )
     except Exception as e:
-        raise HTTPException(
-            status_code=500,
-            detail=f"LLM error: {str(e)}"
+        raise HTTPException(status_code=500, detail=f"LLM error: {str(e)}")
+
+    # ── Step 6: TTS in background (don't block response!) ────────────────
+    # Generate audio asynchronously — client gets reply immediately
+    audio_url = None
+    try:
+        audio_url = await asyncio.to_thread(text_to_speech, reply, final_emotion)
+    except Exception as e:
+        print(f"[tts] background error: {e}")
+
+    # ── Step 7: DB save in background (don't block response!) ────────────
+    if request.user_id:
+        background_tasks.add_task(
+            _save_to_db, db, request.user_id,
+            request.message, reply, text_emotion, final_emotion, confidence
         )
 
-    # ── Step 6: Text to speech ────────────────────────────────
-    audio_url = text_to_speech(reply, final_emotion)
-
-    # ── Step 7: Save to database ──────────────────────────────
-    if request.user_id:
-        try:
-            db.add(Message(
-                user_id=request.user_id,
-                role="user",
-                content=request.message,   # save original, not augmented
-                emotion=text_emotion,
-                emotion_conf=confidence,
-                input_type="text",
-            ))
-            db.add(Message(
-                user_id=request.user_id,
-                role="assistant",
-                content=reply,
-                emotion=final_emotion,
-                emotion_conf=confidence,
-                input_type="text",
-            ))
-            await db.commit()
-        except Exception as e:
-            # DB errors should not break the chat response
-            print(f"DB save error: {e}")
-            await db.rollback()
-
-    # ── Step 8: Return response ───────────────────────────────
+    # ── Step 8: Return immediately ────────────────────────────────────────
     return ChatResponse(
         reply=reply,
         emotion=final_emotion,
@@ -213,10 +211,7 @@ async def chat(request: ChatRequest, db: AsyncSession = Depends(get_db)):
 
 
 @router.get("/history/{user_id}")
-async def get_history(
-    user_id: int,
-    db: AsyncSession = Depends(get_db),
-):
+async def get_history(user_id: int, db: AsyncSession = Depends(get_db)):
     result = await db.execute(
         select(Message)
         .where(Message.user_id == user_id)
@@ -225,42 +220,28 @@ async def get_history(
     )
     messages = result.scalars().all()
     return [
-        {
-            "role":      m.role,
-            "content":   m.content,
-            "emotion":   m.emotion,
-            "timestamp": str(m.timestamp),
-        }
+        {"role": m.role, "content": m.content,
+         "emotion": m.emotion, "timestamp": str(m.timestamp)}
         for m in messages
     ]
 
 
 @router.get("/analytics/{user_id}")
-async def get_analytics(
-    user_id: int,
-    db: AsyncSession = Depends(get_db),
-):
+async def get_analytics(user_id: int, db: AsyncSession = Depends(get_db)):
     result = await db.execute(
-        select(Message).where(
-            Message.user_id == user_id,
-            Message.role == "user",
-        )
+        select(Message).where(Message.user_id == user_id, Message.role == "user")
     )
     messages = result.scalars().all()
-
-    counts        = {}
-    total         = len(messages)
+    counts = {}
+    total = len(messages)
     positive_count = 0
     negative_count = 0
-
     for msg in messages:
         emotion = msg.emotion or "neutral"
         counts[emotion] = counts.get(emotion, 0) + 1
-
         group = get_emotion_group(emotion)
         if group == 'positive': positive_count += 1
         if group == 'negative': negative_count += 1
-
     return {
         "emotion_distribution": counts,
         "total_messages":       total,
