@@ -109,7 +109,6 @@ async def generate_response(
                     model=model,
                     contents=full_prompt,
                     config=types.GenerateContentConfig(
-                        max_output_tokens=400,  # was 700 — shorter = faster
                         temperature=0.85,
                     )
                 )

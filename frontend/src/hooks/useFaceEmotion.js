@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
-import * as faceapi from 'face-api.js';
+import * as faceapi from '@vladmandic/face-api';
 
 // Map face-api expressions to our emotion labels
 const EXPRESSION_MAP = {
